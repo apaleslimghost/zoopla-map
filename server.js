@@ -12,34 +12,36 @@ try {
 	store = {};
 }
 
-app.get('/', (req, res) => {
-	res.send(`<form method="post" action="/map">
-	<textarea name="urls" cols="80" rows="5"></textarea>
-	<input type="submit">
-</form>`)
-});
+const values = obj => Object.keys(obj).map(k => obj[k]);
+const zooplaId = url => url.match(/^http:\/\/www.zoopla.co.uk\/for-sale\/details\/(\d+)/)[1];
 
-app.post('/map', bodyParser.urlencoded({extended: false}), (req, res) => {
-	const id = Math.floor(Math.random() * 0xfffffff).toString(16);
-	const urls = req.body.urls.split('\n').map(url => url.trim());
-	Promise.all(urls.map(zooplaDetailScraper)).then(details => {
-		store[id] = details.map((detail, i) => {
-			detail.url = urls[i];
-			return detail;
-		});
+app.post('/property', bodyParser.urlencoded({extended: false}), (req, res) => {
+	zooplaDetailScraper(req.body.url).then(details => {
+		const id = zooplaId(req.body.url);
+		details.url = req.body.url;
+		details.id = id;
+		store[id] = details;
 		fs.writeFile('store.json', JSON.stringify(store));
-		res.redirect(`/map/${id}`);
+		res.redirect(`/`);
 	});
 });
 
-app.get('/map/:id', (req, res, next) => {
-	const details = store[req.params.id];
-	if(!details) return next(new Error(`Map ${req.params.id} not found`));
+app.post('/property/:id/delete', (req, res) => {
+	delete store[req.params.id];
+	fs.writeFile('store.json', JSON.stringify(store));
+	res.redirect(`/`);
+});
 
-	const center = details.reduce((center, detail) => ({
+app.get('/', (req, res) => {
+	const details = values(store);
+	let center = details.reduce((center, detail) => ({
 		lat: center.lat + parseFloat(detail.location.lat) / details.length,
 		lon: center.lon + parseFloat(detail.location.lon) / details.length,
 	}), {lat: 0, lon: 0});
+
+	if(!center.lat && !center.lon) {
+		center = {lat: 51.4873388, lon: -0.0979951};
+	}
 
 	res.send(`<!DOCTYPE html>
 <html>
@@ -57,13 +59,19 @@ app.get('/map/:id', (req, res, next) => {
         height: 100%;
       }
 			img[alt=Floorplan] {
-				width: 100%;
+				max-width: 50%;
 				height: auto;
+			}
+			.over {
+				position: absolute;
+				top: 1em;
+				right: 1em;
 			}
     </style>
   </head>
   <body>
     <div id="map"></div>
+		<form class="over" method="post" action="/property"><input placeholder="http://www.zoopla.co.uk/for-sale/details/123456789" type="url" name="url" size="50"> <input type="submit"></form>
     <script>
       var map;
       function initMap() {
@@ -80,7 +88,7 @@ app.get('/map/:id', (req, res, next) => {
 			  });
 
 				var info${i} = new google.maps.InfoWindow({
-					content: ${JSON.stringify(marked(`# ${detail.address}
+					content: ${JSON.stringify(marked(`# ${detail.address} <form method="post" action="/property/${detail.id}/delete"><button>× remove from map</button></form>
 ## [${detail.blurb}](${zooplaDetailScraper.toZooplaUrl(detail.url)}) ${detail.price}
 ${detail.description}
 
