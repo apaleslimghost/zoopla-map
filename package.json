@@ -1,0 +1,30 @@
+{
+  "name": "zoopla-map",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "nodemon --exec 'node -r dotenv/config' server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quarterto/zoopla-map.git"
+  },
+  "keywords": [],
+  "author": "Matt Brennan <matt@153.io> (http://blog.153.io/)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/quarterto/zoopla-map/issues"
+  },
+  "homepage": "https://github.com/quarterto/zoopla-map#readme",
+  "dependencies": {
+    "body-parser": "^1.15.1",
+    "express": "^4.13.4",
+    "zoopla-detail-scraper": "^1.3.1"
+  },
+  "devDependencies": {
+    "dotenv": "^2.0.0",
+    "nodemon": "^1.9.2",
+    "now": "^0.17.1"
+  }
+}
