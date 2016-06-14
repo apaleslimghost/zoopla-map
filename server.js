@@ -3,11 +3,14 @@ var zooplaDetailScraper = require('zoopla-detail-scraper');
 var bodyParser = require('body-parser');
 var fs = require('fs');
 var marked = require('marked');
+var path = require('path');
 var app = express();
+
+var storePath = path.resolve(__dirname, 'store.json');
 
 var store;
 try {
-	store = require('./store.json');
+	store = require(storePath);
 } catch(e) {
 	store = {};
 }
@@ -21,14 +24,14 @@ app.post('/property', bodyParser.urlencoded({extended: false}), (req, res) => {
 		details.url = req.body.url;
 		details.id = id;
 		store[id] = details;
-		fs.writeFile('store.json', JSON.stringify(store));
+		fs.writeFile(storePath, JSON.stringify(store));
 		res.redirect(`/`);
 	});
 });
 
 app.post('/property/:id/delete', (req, res) => {
 	delete store[req.params.id];
-	fs.writeFile('store.json', JSON.stringify(store));
+	fs.writeFile(storePath, JSON.stringify(store));
 	res.redirect(`/`);
 });
 
