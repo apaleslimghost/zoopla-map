@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "nodemon --exec 'node -r dotenv/config' server.js"
+    "start": "nodemon --exec 'node -r dotenv/config' server.js",
+    "deploy": "now"
   },
   "repository": {
     "type": "git",
