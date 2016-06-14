@@ -2,6 +2,7 @@ var express = require('express');
 var zooplaDetailScraper = require('zoopla-detail-scraper');
 var bodyParser = require('body-parser');
 var fs = require('fs');
+var marked = require('marked');
 var app = express();
 
 var store;
@@ -12,24 +13,29 @@ try {
 }
 
 app.get('/', (req, res) => {
-	const id = Math.floor(Math.random() * 0xfffffff).toString(16);
-	res.send(`<form method="post" action="/map/${id}">
+	res.send(`<form method="post" action="/map">
 	<textarea name="urls" cols="80" rows="5"></textarea>
 	<input type="submit">
 </form>`)
 });
 
-app.post('/map/:id', bodyParser.urlencoded({extended: false}), (req, res) => {
+app.post('/map', bodyParser.urlencoded({extended: false}), (req, res) => {
+	const id = Math.floor(Math.random() * 0xfffffff).toString(16);
 	const urls = req.body.urls.split('\n').map(url => url.trim());
 	Promise.all(urls.map(zooplaDetailScraper)).then(details => {
-		store[req.params.id] = details;
+		store[id] = details.map((detail, i) => {
+			detail.url = urls[i];
+			return detail;
+		});
 		fs.writeFile('store.json', JSON.stringify(store));
-		res.redirect(`/map/${req.params.id}`);
+		res.redirect(`/map/${id}`);
 	});
 });
 
-app.get('/map/:id', (req, res) => {
+app.get('/map/:id', (req, res, next) => {
 	const details = store[req.params.id];
+	if(!details) return next(new Error(`Map ${req.params.id} not found`));
+
 	const center = details.reduce((center, detail) => ({
 		lat: center.lat + parseFloat(detail.location.lat) / details.length,
 		lon: center.lon + parseFloat(detail.location.lon) / details.length,
@@ -50,6 +56,10 @@ app.get('/map/:id', (req, res) => {
       #map {
         height: 100%;
       }
+			img[alt=Floorplan] {
+				width: 100%;
+				height: auto;
+			}
     </style>
   </head>
   <body>
@@ -62,12 +72,27 @@ app.get('/map/:id', (req, res) => {
           zoom: 13
         });
 
-				${details.map(detail => `
-				new google.maps.Marker({
+				${details.map((detail, i) => `
+				var marker${i} = new google.maps.Marker({
 			    position: {lat: ${detail.location.lat}, lng: ${detail.location.lon}},
 			    map: map,
 			    title: '${detail.address}'
 			  });
+
+				var info${i} = new google.maps.InfoWindow({
+					content: ${JSON.stringify(marked(`# ${detail.address}
+## [${detail.blurb}](${zooplaDetailScraper.toZooplaUrl(detail.url)}) ${detail.price}
+${detail.description}
+
+${detail.floorplan ? `
+### Floorplan
+![Floorplan](${detail.floorplan})
+` : ''}`))}
+				});
+
+				marker${i}.addListener('click', function() {
+					info${i}.open(map, marker${i})
+				})
 				`).join('')}
       }
     </script>
