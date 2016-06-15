@@ -4,49 +4,51 @@ var bodyParser = require('body-parser');
 var fs = require('fs');
 var marked = require('marked');
 var path = require('path');
+var MongoClient = require('mongodb').MongoClient;
+var assertEnv = require('@quarterto/assert-env');
 var app = express();
 
-var storePath = path.resolve(__dirname, 'store.json');
+assertEnv(['GOOGLE_MAPS_KEY', 'MONGO_URL']);
 
-var store;
-try {
-	store = require(storePath);
-} catch(e) {
-	store = {};
-}
+app.use((req, res, next) => {
+	MongoClient.connect(process.env.MONGO_URL).then(db => {
+		req.db = db;
+		next();
+	}).catch(next);
+});
 
 const values = obj => Object.keys(obj).map(k => obj[k]);
 const zooplaId = url => url.match(/^http:\/\/www.zoopla.co.uk\/for-sale\/details\/(\d+)/)[1];
 
-app.post('/property', bodyParser.urlencoded({extended: false}), (req, res) => {
+app.post('/property', bodyParser.urlencoded({extended: false}), (req, res, next) => {
 	zooplaDetailScraper(req.body.url).then(details => {
 		const id = zooplaId(req.body.url);
 		details.url = req.body.url;
-		details.id = id;
-		store[id] = details;
-		fs.writeFile(storePath, JSON.stringify(store));
+		details._id = id;
+		return req.db.collection('properties').insertOne(details);
+	}).then(() => {
 		res.redirect(`/`);
-	});
+	}).catch(next);
 });
 
-app.post('/property/:id/delete', (req, res) => {
-	delete store[req.params.id];
-	fs.writeFile(storePath, JSON.stringify(store));
-	res.redirect(`/`);
+app.post('/property/:id/delete', (req, res, next) => {
+	req.db.collection('properties').deleteOne({_id: req.params.id}).then(() => {
+		res.redirect(`/`);
+	}).catch(next);
 });
 
-app.get('/', (req, res) => {
-	const details = values(store);
-	let center = details.reduce((center, detail) => ({
-		lat: center.lat + parseFloat(detail.location.lat) / details.length,
-		lon: center.lon + parseFloat(detail.location.lon) / details.length,
-	}), {lat: 0, lon: 0});
+app.get('/', (req, res, next) => {
+	req.db.collection('properties').find({}).toArray().then(details => {
+		let center = details.reduce((center, detail) => ({
+			lat: center.lat + parseFloat(detail.location.lat) / details.length,
+			lon: center.lon + parseFloat(detail.location.lon) / details.length,
+		}), {lat: 0, lon: 0});
 
-	if(!center.lat && !center.lon) {
-		center = {lat: 51.4873388, lon: -0.0979951};
-	}
+		if(!center.lat && !center.lon) {
+			center = {lat: 51.4873388, lon: -0.0979951};
+		}
 
-	res.send(`<!DOCTYPE html>
+		res.send(`<!DOCTYPE html>
 <html>
   <head>
     <title>Zoopla Map</title>
@@ -91,7 +93,7 @@ app.get('/', (req, res) => {
 			  });
 
 				var info${i} = new google.maps.InfoWindow({
-					content: ${JSON.stringify(marked(`# ${detail.address} <form method="post" action="/property/${detail.id}/delete"><button>× remove from map</button></form>
+					content: ${JSON.stringify(marked(`# ${detail.address} <form method="post" action="/property/${detail._id}/delete"><button>× remove from map</button></form>
 ## [${detail.blurb}](${zooplaDetailScraper.toZooplaUrl(detail.url)}) ${detail.price}
 ${detail.description}
 
@@ -111,6 +113,7 @@ ${detail.floorplan ? `
     async defer></script>
   </body>
 </html>`);
+	}).catch(next);
 });
 
 app.listen(process.env.PORT || 3002);
